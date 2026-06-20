@@ -1,164 +1,149 @@
--- ============================================================
---  PROYECTO FINAL — BASES DE DATOS
---  Escenario C: Sistema de Gestión de Biblioteca Pública
---  Archivo: 03_Consultas.sql
---  Descripción: Consultas SQL requeridas por el escenario
---  Motor: PostgreSQL 17+
--- ============================================================
-
-SET search_path TO biblioteca;
-
--- ============================================================
--- CONSULTA 1
+-- Consulta 1
 -- Libros más prestados en los últimos 3 meses
--- Muestra el título, ISBN, y cantidad de préstamos recientes
--- ============================================================
-SELECT
+-- muestra el título, isbn, y cantidad de préstamos recientes
+select
     l.titulo,
     l.isbn,
-    COUNT(p.id_prestamo)  AS total_prestamos
-FROM prestamo p
-JOIN ejemplar  e ON e.id_ejemplar = p.id_ejemplar
-JOIN libro     l ON l.id_libro    = e.id_libro
-WHERE p.fecha_prestamo >= CURRENT_DATE - INTERVAL '3 months'
-GROUP BY l.id_libro, l.titulo, l.isbn
-ORDER BY total_prestamos DESC;
+    count(p.id_prestamo) total_prestamos
+from prestamo p
+join ejemplar e on e.id_ejemplar = p.id_ejemplar
+join libro l on l.id_libro = e.id_libro
+where p.fecha_prestamo >= current_date - interval '3 months'
+group by l.id_libro, l.titulo, l.isbn
+order by total_prestamos desc;
 
--- ============================================================
--- CONSULTA 2
+-- Consulta 2
 -- Socios con multas pendientes
--- Muestra nombre completo, DUI, monto total adeudado y
+-- muestra nombre completo, dui, monto total adeudado y
 -- cantidad de multas sin pagar
--- ============================================================
-SELECT
+select
     s.id_socio,
-    s.nombre || ' ' || s.apellido   AS socio,
+    s.nombre || ' ' || s.apellido socio,
     s.dui,
-    COUNT(m.id_multa)               AS multas_pendientes,
-    SUM(m.monto_total)              AS monto_total_adeudado
-FROM socio   s
-JOIN multa   m ON m.id_socio = s.id_socio
-WHERE m.estado = 'Pendiente'
-GROUP BY s.id_socio, s.nombre, s.apellido, s.dui
-ORDER BY monto_total_adeudado DESC;
+    count(m.id_multa) multas_pendientes,
+    sum(m.monto_total) monto_total_adeudado
+from socio s
+join multa m on m.id_socio = s.id_socio
+where m.estado = 'PENDIENTE'
+group by s.id_socio, s.nombre, s.apellido, s.dui
+order by monto_total_adeudado desc;
 
--- ============================================================
--- CONSULTA 3
+-- Consulta 3
 -- Autores con mayor número de títulos en el catálogo
--- Incluye nombre completo y cantidad de libros
--- ============================================================
-SELECT
-    a.nombre || ' ' || a.apellido   AS autor,
+-- incluye nombre completo, nacionalidad y cantidad de libros
+select
+    a.nombre || ' ' || a.apellido autor,
     a.nacionalidad,
-    COUNT(la.id_libro)              AS total_titulos
-FROM autor      a
-JOIN libro_autor la ON la.id_autor = a.id_autor
-GROUP BY a.id_autor, a.nombre, a.apellido, a.nacionalidad
-ORDER BY total_titulos DESC;
+    count(la.id_libro) total_titulos
+from autor a
+join libro_autor la on la.id_autor = a.id_autor
+group by a.id_autor, a.nombre, a.apellido, a.nacionalidad
+order by total_titulos desc;
 
--- ============================================================
--- CONSULTA 4
--- Ejemplares que NUNCA han sido prestados
--- Útil para detectar material sin rotación
--- ============================================================
-SELECT
+-- Consulta 4
+-- Ejemplares que nunca han sido prestados
+-- útil para detectar material sin rotación en el inventario
+select
     e.id_ejemplar,
     e.codigo_barras,
     l.titulo,
     l.isbn,
     e.fecha_adquisicion,
     e.estado
-FROM ejemplar e
-JOIN libro    l ON l.id_libro = e.id_libro
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM   prestamo p
-    WHERE  p.id_ejemplar = e.id_ejemplar
+from ejemplar e
+join libro l on l.id_libro = e.id_libro
+where not exists (
+    select 1
+    from prestamo p
+    where p.id_ejemplar = e.id_ejemplar
 )
-ORDER BY e.fecha_adquisicion;
+order by e.fecha_adquisicion asc;
 
--- ============================================================
--- CONSULTA 5
+-- Consulta 5
 -- Empleado que ha procesado más préstamos en el mes actual
--- ============================================================
-SELECT
+select
     em.id_empleado,
-    em.nombre || ' ' || em.apellido AS empleado,
+    em.nombre || ' ' || em.apellido empleado,
     em.cargo,
-    COUNT(p.id_prestamo)            AS prestamos_del_mes
-FROM empleado em
-JOIN prestamo p ON p.id_empleado = em.id_empleado
-WHERE DATE_TRUNC('month', p.fecha_prestamo) = DATE_TRUNC('month', CURRENT_DATE)
-GROUP BY em.id_empleado, em.nombre, em.apellido, em.cargo
-ORDER BY prestamos_del_mes DESC
-LIMIT 1;
+    count(p.id_prestamo) prestamos_del_mes
+from empleado em
+join prestamo p on p.id_empleado = em.id_empleado
+where date_trunc('month', p.fecha_prestamo) = date_trunc('month', current_date)
+group by em.id_empleado, em.nombre, em.apellido, em.cargo
+order by prestamos_del_mes desc
+limit 1;
+
 
 -- ============================================================
--- CONSULTAS ADICIONALES DE APOYO
+-- Consultas adicionales de apoyo y monitoreo
 -- ============================================================
 
--- A. Verificar disponibilidad de ejemplares de un libro dado su título
-SELECT
+-- ------------------------------------------------------------
+-- A. Verificar disponibilidad de ejemplares dado un título
+-- ------------------------------------------------------------
+select
     l.titulo,
     e.id_ejemplar,
     e.codigo_barras,
     e.estado
-FROM libro    l
-JOIN ejemplar e ON e.id_libro = l.id_libro
-WHERE l.titulo ILIKE '%Cien años%'
-ORDER BY e.estado;
+from libro l
+join ejemplar e on e.id_libro = l.id_libro
+where l.titulo ilike '%Cien años%'
+order by e.estado asc;
 
--- B. Historial completo de préstamos de un socio
-SELECT
+-- ------------------------------------------------------------
+-- B. Historial completo de préstamos de un socio específico
+-- ------------------------------------------------------------
+select
     p.id_prestamo,
     l.titulo,
     p.fecha_prestamo,
     p.fecha_limite,
-    p.estado                                    AS estado_prestamo,
+    p.estado estado_prestamo,
     d.fecha_devolucion,
-    CASE
-        WHEN d.fecha_devolucion IS NULL THEN 'No devuelto aún'
-        WHEN d.fecha_devolucion > p.fecha_limite THEN 'Devuelto tarde'
-        ELSE 'A tiempo'
-    END                                         AS resultado,
-    m.monto_total                               AS multa
-FROM prestamo  p
-JOIN ejemplar  e ON e.id_ejemplar = p.id_ejemplar
-JOIN libro     l ON l.id_libro    = e.id_libro
-LEFT JOIN devolucion d ON d.id_prestamo = p.id_prestamo
-LEFT JOIN multa      m ON m.id_prestamo = p.id_prestamo
-WHERE p.id_socio = 1                            -- reemplazar con el ID deseado
-ORDER BY p.fecha_prestamo DESC;
+    case
+        when d.fecha_devolucion is null then 'No devuelto aún'
+        when d.fecha_devolucion > p.fecha_limite then 'Devuelto tarde'
+        else 'A tiempo'
+    end resultado,
+    coalesce(m.monto_total, 0.00) multa
+from prestamo p
+join ejemplar e on e.id_ejemplar = p.id_ejemplar
+join libro l on l.id_libro = e.id_libro
+left join devolucion d on d.id_prestamo = p.id_prestamo
+left join multa m on m.id_prestamo = p.id_prestamo
+where p.id_socio = 1
+order by p.fecha_prestamo desc;
 
--- C. Ocupación por categoría (libros, ejemplares y préstamos activos)
-SELECT
-    c.nombre                         AS categoria,
-    COUNT(DISTINCT l.id_libro)       AS total_libros,
-    COUNT(DISTINCT e.id_ejemplar)    AS total_ejemplares,
-    COUNT(DISTINCT p.id_prestamo)    AS prestamos_activos
-FROM categoria c
-JOIN libro     l ON l.id_categoria = c.id_categoria
-JOIN ejemplar  e ON e.id_libro     = l.id_libro
-LEFT JOIN prestamo p ON p.id_ejemplar = e.id_ejemplar AND p.estado = 'Activo'
-GROUP BY c.id_categoria, c.nombre
-ORDER BY total_prestamos DESC;
+-- ------------------------------------------------------------
+-- c. ocupación por categoría (libros, ejemplares y préstamos activos)
+-- ------------------------------------------------------------
+select
+    c.nombre categoria,
+    count(distinct l.id_libro) total_libros,
+    count(distinct e.id_ejemplar) total_ejemplares,
+    count(distinct p.id_prestamo) prestamos_activos
+from categoria c
+left join libro l on l.id_categoria = c.id_categoria
+left join ejemplar e on e.id_libro = l.id_libro
+left join prestamo p on p.id_ejemplar = e.id_ejemplar and p.estado = 'ACTIVO'
+group by c.id_categoria, c.nombre
+order by total_libros desc;
 
--- D. Préstamos próximos a vencer (en los próximos 3 días)
-SELECT
+-- ------------------------------------------------------------
+-- d. préstamos próximos a vencer (en los próximos 3 días)
+-- ------------------------------------------------------------
+select
     p.id_prestamo,
-    s.nombre || ' ' || s.apellido   AS socio,
+    s.nombre || ' ' || s.apellido socio,
     s.telefono,
     l.titulo,
     p.fecha_limite,
-    p.fecha_limite - CURRENT_DATE   AS dias_restantes
-FROM prestamo  p
-JOIN socio     s ON s.id_socio    = p.id_socio
-JOIN ejemplar  e ON e.id_ejemplar = p.id_ejemplar
-JOIN libro     l ON l.id_libro    = e.id_libro
-WHERE p.estado = 'Activo'
-  AND p.fecha_limite BETWEEN CURRENT_DATE AND CURRENT_DATE + 3
-ORDER BY p.fecha_limite;
-
--- ============================================================
--- FIN DEL SCRIPT DE CONSULTAS
--- ============================================================
+    p.fecha_limite - current_date dias_restantes
+from prestamo p
+join socio s on s.id_socio = p.id_socio
+join ejemplar e on e.id_ejemplar = p.id_ejemplar
+join libro l on l.id_libro = e.id_libro
+where p.estado = 'ACTIVO'
+  and p.fecha_limite between current_date and current_date + 3
+order by p.fecha_limite asc;
